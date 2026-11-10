@@ -34,7 +34,7 @@ Requires Node 22.5 or newer (Node 26 LTS recommended).
 ```bash
 yarn install
 cp .env.example .env.local      # set CAAS_ADMIN_TOKENS and CAAS_SYNC_SECRET
-yarn dev                        # http://localhost:3000
+yarn dev                        # http://localhost:3000, or the next free port
 
 curl localhost:3000/api/caas/offers/home/hero.json
 
@@ -42,6 +42,11 @@ curl -X PUT localhost:3000/api/caas-admin/content/offers/home/hero \
   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
   -d '{"title":"Black Friday"}'
 ```
+
+If port 3000 is taken (for example by another local Next.js app), `yarn dev`
+uses the next free port and logs `admin console: http://localhost:<port>/caas-admin`.
+The console always talks to the server it was loaded from and shows that
+address on the connect screen. Use the token from this project's `.env.local`.
 
 Open `http://localhost:3000/caas-admin` for the console.
 

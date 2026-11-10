@@ -4,7 +4,7 @@
  * pastes in; the token is kept in memory for this tab only (reloading the page
  * forgets it), never in localStorage or a cookie.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from 'react';
 import { deepEqual, JsonSyntaxError, parseJsonDetailed, type Json } from '@/lib/caas/json-tools';
 import { normalizeKey } from '@/lib/caas/keys';
 import { ApiError, createApi, describeReport, type Api, type EntryMeta, type PublishReport, type Status } from './api';
@@ -36,6 +36,20 @@ function errorNotice(e: unknown): Notice {
   return { text: (e as Error).message, kind: 'error' };
 }
 
+const noSubscribe = () => () => {};
+/** host:port this console was loaded from (empty during server rendering). */
+function useServerHost(): string {
+  return useSyncExternalStore(noSubscribe, () => window.location.host, () => '');
+}
+
+function rejectedMessage(host: string): string {
+  return (
+    `The server at ${host || 'this address'} rejected the admin token. ` +
+    'If several servers are running, check this is the right one: each has its own CAAS_ADMIN_TOKENS. ' +
+    'Paste only the token, without the "name:" in front of it.'
+  );
+}
+
 function sanitizedDetails(r: PublishReport): string[] {
   return (r.sanitized ?? []).map((s) => `${s.index !== undefined ? `entry ${s.index} ` : ''}${s.pointer || '(root)'}: ${s.reason}`);
 }
@@ -51,6 +65,7 @@ export function AdminApp() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const newDialog = useRef<HTMLDialogElement>(null);
+  const host = useServerHost();
 
   const dirty = editing ? editing.isNew || !deepEqual(editing.doc, editing.original) : false;
 
@@ -69,13 +84,13 @@ export function AdminApp() {
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
           setApi(null);
-          setNotice({ text: 'The admin token was rejected. Connect again.', kind: 'error' });
+          setNotice({ text: rejectedMessage(host), kind: 'error' });
         } else setNotice(errorNotice(e));
       } finally {
         setBusy(false);
       }
     },
-    [],
+    [host],
   );
 
   const showError = useCallback((e: unknown) => setNotice(errorNotice(e)), []);
@@ -195,10 +210,18 @@ export function AdminApp() {
         >
           <h1>CaaS console</h1>
           <p className="muted">Paste an admin token. It stays in this tab&apos;s memory only and is sent as a header, never stored.</p>
+          <p className="small">
+            Server: <code>{host || '…'}</code>
+          </p>
           <label className="stack">
             Admin token
             <input type="password" autoComplete="off" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} required minLength={16} />
           </label>
+          {/^[A-Za-z0-9_-]{1,40}:/.test(tokenInput.trim()) && (
+            <p className="error small">
+              This looks like it includes the name from CAAS_ADMIN_TOKENS (&quot;{tokenInput.trim().split(':')[0]}:&quot;). Paste only the part after the colon.
+            </p>
+          )}
           <button type="submit" className="primary" disabled={busy || tokenInput.trim().length < 16}>
             {busy ? 'Connecting…' : 'Connect'}
           </button>

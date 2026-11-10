@@ -117,6 +117,9 @@ export function startRuntime(): Runtime {
   log(config, `configuration: ${config.propertiesSource ? `environment + ${config.propertiesSource}` : 'environment only'}`);
   for (const w of config.warnings) log(config, `config warning: ${w}`, 'warn');
   log(config, `started; seed rows applied: ${seeded}; entries: ${rt.store.count()}`);
+  // `next dev` moves to the next free port when 3000 is taken; say where this service ended up.
+  const origin = process.env.__NEXT_PRIVATE_ORIGIN;
+  if (origin && process.env.NODE_ENV !== 'production') log(config, `admin console: ${origin}/caas-admin`);
   if (!rt.replicator.enabled) log(config, 'CAAS_SYNC_SECRET is not set: replication between pods is DISABLED', 'warn');
   if (config.adminTokens.size === 0) log(config, 'CAAS_ADMIN_TOKENS is not set: the admin API is DISABLED', 'warn');
   startHealthReporting(rt);
