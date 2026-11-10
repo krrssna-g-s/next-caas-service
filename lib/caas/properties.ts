@@ -16,15 +16,17 @@
  * dotted name (caas.cdn.max-age, akamai.client.token). Dotted names are
  * upper-cased and '.' / '-' become '_'.
  *
- * Environment- and zone-specific values, as a key prefix or a section:
- *   caas.cdn.max.age=86400              every environment
- *   sit.caas.cdn.max.age=300            only when CAAS_ENV=sit
- *   [prod.west]                         everything below: CAAS_ENV=prod and CAAS_ZONE=west
+ * Usually each environment is served its own file: plain keys are that
+ * environment's values, and [east] / [west] sections hold what differs by zone:
+ *   caas.cdn.max.age=86400              this environment, both zones
+ *   [east]                              everything below: only when CAAS_ZONE=east
  *   caas.remote.peers=https://...
- * Keys scoped to another environment or zone are ignored.
+ * A file shared by several environments can also use [sit], [prod.west] or a
+ * key prefix (sit.caas.cdn.max.age=300). Keys for another environment or
+ * zone are ignored.
  *
  * Precedence (highest first):
- *   real environment variable > env.zone.KEY > env.KEY > KEY
+ *   real environment variable > env.zone.KEY > zone.KEY > env.KEY > KEY
  * so a value set in the pod spec or a Secret always wins over the file.
  *
  * Values may reference other values as ${NAME} (resolved from the
@@ -74,8 +76,15 @@ export interface ResolvedProperties {
  * key name that happens to start with another word.
  */
 export function resolveProperties(raw: RawProperties, base: Env, known: { envs: string[]; zones: string[] }): ResolvedProperties {
-  const envs = new Set(known.envs.map((s) => s.toLowerCase()));
-  const zones = new Set(known.zones.map((s) => s.toLowerCase()));
+  // The environment and zone this pod runs as: from the real environment, else
+  // from an unscoped CAAS_ENV / CAAS_ZONE (or caas.env / caas.zone) in the file.
+  const fromFile = (name: string) => [...raw].find(([k]) => toEnvName(k) === name)?.[1];
+  const env = (base.CAAS_ENV ?? fromFile('CAAS_ENV') ?? 'local').trim().toLowerCase();
+  const zone = (base.CAAS_ZONE ?? fromFile('CAAS_ZONE') ?? 'local').trim().toLowerCase();
+  // The running environment and zone are always recognised as scopes, so
+  // [alpha] / [beta1] sections work without declaring the names anywhere.
+  const envs = new Set([...known.envs.map((s) => s.toLowerCase()), env]);
+  const zones = new Set([...known.zones.map((s) => s.toLowerCase()), zone]);
 
   type Scoped = { name: string; env?: string; zone?: string; key: string; value: string };
   const items: Scoped[] = [];
@@ -87,17 +96,15 @@ export function resolveProperties(raw: RawProperties, base: Env, known: { envs: 
       items.push({ name: toEnvName(parts.slice(2).join('.')), env: first, zone: second, key, value });
     } else if (parts.length > 1 && envs.has(first)) {
       items.push({ name: toEnvName(parts.slice(1).join('.')), env: first, key, value });
+    } else if (parts.length > 1 && zones.has(first)) {
+      // [east] / [west] in a file that belongs to one environment.
+      items.push({ name: toEnvName(parts.slice(1).join('.')), zone: first, key, value });
     } else {
       items.push({ name: toEnvName(key), key, value });
     }
   }
 
-  // The environment and zone may come from the file (unscoped) when not set in the real environment.
-  const unscoped = (name: string) => items.find((it) => !it.env && it.name === name)?.value;
-  const env = (base.CAAS_ENV ?? unscoped('CAAS_ENV') ?? 'local').toLowerCase();
-  const zone = (base.CAAS_ZONE ?? unscoped('CAAS_ZONE') ?? 'local').toLowerCase();
-
-  const rank = (it: Scoped) => (it.env && it.zone ? 3 : it.env ? 2 : 1);
+  const rank = (it: Scoped) => (it.env && it.zone ? 4 : it.zone ? 3 : it.env ? 2 : 1);
   const chosen = new Map<string, Scoped>();
   for (const it of items) {
     if (it.env && it.env !== env) continue;
@@ -133,7 +140,12 @@ export function resolveProperties(raw: RawProperties, base: Env, known: { envs: 
   return { values, env, zone, sources };
 }
 
-export const KNOWN_ENVS = ['local', 'dev', 'sit', 'uat', 'canary', 'stage', 'staging', 'perf', 'preprod', 'prod'];
+/**
+ * Names recognised as environment scopes in addition to the running one. They
+ * matter only in a file shared by several environments: a [beta1] section is
+ * then recognised (and skipped) on alpha instead of read as a key "beta1.x".
+ */
+export const KNOWN_ENVS = ['local', 'dev', 'sit', 'alpha', 'beta', 'beta1', 'beta2', 'beta3', 'uat', 'canary', 'stage', 'staging', 'perf', 'preprod', 'prod'];
 export const KNOWN_ZONES = ['local', 'east', 'west', 'central', 'north', 'south'];
 
 // ---------------------------------------------------------------- loading

@@ -134,6 +134,51 @@ test('${NAME} references resolve from the environment and the file', () => {
   assert.throws(() => loadEnvironment({}, loop), /circular/);
 });
 
+test('alpha / beta1 / beta2: own file per environment, or sections in one shared file', () => {
+  const own = readPropertiesText('akamai.network=staging\ncaas.cdn.max.age=60\n');
+  assert.equal(resolveProperties(own, { CAAS_ENV: 'alpha' }, known).values.AKAMAI_NETWORK, 'staging');
+
+  const shared = readPropertiesText('akamai.network=production\n[alpha]\nakamai.network=staging-a\n[beta1]\nakamai.network=staging-b1\n[beta2.west]\nakamai.network=staging-b2w\n');
+  const pick = (env: string, zone = 'east') => resolveProperties(shared, { CAAS_ENV: env, CAAS_ZONE: zone }, known).values;
+  assert.equal(pick('alpha').AKAMAI_NETWORK, 'staging-a');
+  assert.equal(pick('beta1').AKAMAI_NETWORK, 'staging-b1');
+  assert.equal(pick('beta2').AKAMAI_NETWORK, 'production');
+  assert.equal(pick('beta2', 'west').AKAMAI_NETWORK, 'staging-b2w');
+  assert.equal(pick('prod').AKAMAI_NETWORK, 'production');
+  // A name never declared anywhere still works for the environment that is running.
+  const custom = readPropertiesText('akamai.network=production\n[gamma7]\nakamai.network=x\n');
+  assert.equal(resolveProperties(custom, { CAAS_ENV: 'gamma7' }, known).values.AKAMAI_NETWORK, 'x');
+  // CAAS_ENV can also come from the top of that environment's own file.
+  const self = readPropertiesText('caas.env=beta1\nakamai.network=production\n[beta1]\nakamai.network=staging-b1\n');
+  const r = resolveProperties(self, {}, known);
+  assert.equal(r.env, 'beta1');
+  assert.equal(r.values.AKAMAI_NETWORK, 'staging-b1');
+});
+
+test('single-environment file: plain keys plus [east] / [west] sections', () => {
+  const file = readPropertiesText(
+    [
+      'akamai.network=production',
+      'caas.cdn.max.age=86400',
+      'caas.peer.dns=caas-headless.caas-canary.svc.cluster.local',
+      '[east]',
+      'caas.remote.peers=https://caas-sync.canary.west.internal.example.com',
+      '[west]',
+      'caas.remote.peers=https://caas-sync.canary.east.internal.example.com',
+      'caas.cdn.max.age=600',
+    ].join('\n'),
+  );
+  const east = resolveProperties(file, { CAAS_ENV: 'canary', CAAS_ZONE: 'east' }, known).values;
+  const west = resolveProperties(file, { CAAS_ENV: 'canary', CAAS_ZONE: 'west' }, known).values;
+  assert.equal(east.CAAS_REMOTE_PEERS, 'https://caas-sync.canary.west.internal.example.com');
+  assert.equal(west.CAAS_REMOTE_PEERS, 'https://caas-sync.canary.east.internal.example.com');
+  assert.equal(east.CAAS_CDN_MAX_AGE, '86400');
+  assert.equal(west.CAAS_CDN_MAX_AGE, '600');
+  assert.equal(east.CAAS_PEER_DNS, west.CAAS_PEER_DNS);
+  assert.equal(east.AKAMAI_NETWORK, 'production');
+  assert.ok(!('EAST_CAAS_REMOTE_PEERS' in east), 'zone keys are not leaked as dotted names');
+});
+
 test('extra environment names can be declared', () => {
   const d = dirWith({ 'global.properties': 'CAAS_KNOWN_ENVS=qa2\nqa2.caas.cdn.max.age=11\ncaas.cdn.max.age=99\n' });
   assert.equal(loadEnvironment({ CAAS_ENV: 'qa2' }, d).env.CAAS_CDN_MAX_AGE, '11');

@@ -67,13 +67,15 @@ not part of this repository or the image. See `global.properties.example`.
   them. Values are used as raw strings.
 - **Keys:** the env-var name (`CAAS_CDN_MAX_AGE`) or dotted
   (`caas.cdn.max-age`); both mean the same setting.
-- **Per environment / zone:** a `[sit]` or `[prod.west]` section, or the same
-  as a key prefix (`sit.caas.cdn.max.age=300`). Keys for other environments or
-  zones are ignored. `CAAS_ENV` / `CAAS_ZONE` come from the environment, else
-  from the top of the file. Recognised names: local, dev, sit, uat, canary,
-  stage, staging, perf, preprod, prod and local, east, west, central, north,
-  south; add more with `CAAS_KNOWN_ENVS` / `CAAS_KNOWN_ZONES`.
-- **Precedence:** environment variable > `[env.zone]` > `[env]` > top of file.
+- **One file per environment:** each environment (alpha, beta1, beta2,
+  canary, stage, prod) is served its own file, so plain keys are that
+  environment's values. What differs between zones goes under `[east]` /
+  `[west]` (typically `caas.remote.peers`). `CAAS_ENV` / `CAAS_ZONE` come from
+  the environment, else from the file (`caas.env=beta1`). A file shared by
+  several environments can also use `[sit]`, `[prod.west]` or a key prefix
+  (`sit.caas.cdn.max.age=300`); keys for other environments or zones are
+  ignored.
+- **Precedence:** environment variable > `[env.zone]` > `[zone]` > `[env]` > top of file.
   A value in the pod spec, the `caas-config` ConfigMap or a Secret always wins,
   so remove literals from `caas-config` that you manage in the file.
 - **References:** `${NAME}` is replaced from the environment or the file, e.g.
