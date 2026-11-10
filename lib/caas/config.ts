@@ -57,6 +57,8 @@ export interface CaasConfig {
 
   akamai?: AkamaiConfig;
 
+  /** Where CAAS_ADMIN_TOKENS came from, for the startup log. */
+  adminTokensSource: string;
   /** Where global.properties was read from (URL without credentials, or file path), if anywhere. */
   propertiesSource?: string;
   /** Problems found while reading configuration that did not stop startup. */
@@ -122,7 +124,14 @@ export function loadConfig(env?: Env): CaasConfig {
   if (env === undefined) {
     const loaded = loadEnvironment(process.env);
     const cfg = buildConfig(loaded.env);
-    return { ...cfg, propertiesSource: loaded.source, warnings: loaded.warnings };
+    // Next.js puts .env / .env.local values into process.env, so "environment" covers those too.
+    const adminTokensSource =
+      process.env.CAAS_ADMIN_TOKENS !== undefined
+        ? 'environment (shell variable or .env / .env.local)'
+        : loaded.env.CAAS_ADMIN_TOKENS !== undefined
+          ? `global.properties (${loaded.source})`
+          : 'not set';
+    return { ...cfg, adminTokensSource, propertiesSource: loaded.source, warnings: loaded.warnings };
   }
   return buildConfig(env);
 }
@@ -146,6 +155,7 @@ function buildConfig(env: Env): CaasConfig {
     seedVersion: Math.max(1, int(env, 'CAAS_SEED_VERSION', 1)),
 
     adminTokens: parseAdminTokens(env),
+    adminTokensSource: env.CAAS_ADMIN_TOKENS !== undefined ? 'provided' : 'not set',
     syncSecret,
 
     peerDns: list(env, 'CAAS_PEER_DNS'),

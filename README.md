@@ -122,6 +122,36 @@ Next.js emits into transactions. Defaults are in `newrelic.js`; any
 Example NRQL: `SELECT average(durationMs), sum(podsFailed) FROM CaasPublish FACET appName TIMESERIES`,
 `SELECT latest(peersInSync), latest(peers) FROM CaasHealth FACET node`.
 
+## Troubleshooting: "the admin token was rejected"
+
+The server logs where its tokens came from and a fingerprint of each (first
+8 hex characters of its SHA-256; never the token itself):
+
+```
+admin API: tokens from environment (shell variable or .env / .env.local): me (48 chars, fingerprint 1a2b3c4d)
+```
+
+Every rejected request logs what arrived (at most once every 5 s):
+
+```
+admin token rejected: presented 51 chars, fingerprint 9f8e7d6c (header authorization); this server accepts me (48 chars, fingerprint 1a2b3c4d) from ...
+```
+
+To fingerprint the token you are pasting, run this and paste it at the prompt (it is not echoed or saved in shell history):
+
+```bash
+read -rs T && printf %s "$T" | shasum -a 256 | cut -c1-8
+```
+
+- **Length is 3 longer and fingerprints differ:** the token was pasted with its `me:` name.
+- **Fingerprints differ, same length:** the server has a different token. Check
+  the source named in the log. A `CAAS_ADMIN_TOKENS` variable set in the shell
+  or system wins over `.env.local`. `.env.local` is git-ignored and differs per
+  machine. The standalone `server.js` does not read `.env.local`, so tokens may
+  come from `global.properties`. The value may also be the `change-me-…` placeholder.
+- **Token contains `$`:** Next.js expands `$NAME` in `.env` files. Use hex
+  tokens (`openssl rand -hex 24`) or escape it as `\$`.
+
 ## API
 
 Public (route through Apigee):

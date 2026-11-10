@@ -6,6 +6,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { describeAdminTokens } from './auth';
 import { ResponseCache } from './cache';
 import { CdnPurger, tags, type PurgeResult } from './cdn';
 import { loadConfig, type CaasConfig } from './config';
@@ -28,7 +29,7 @@ export interface Runtime {
 const globalKey = Symbol.for('caas.runtime');
 type GlobalWithRuntime = typeof globalThis & { [globalKey]?: Runtime };
 
-function log(cfg: CaasConfig, msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+export function log(cfg: CaasConfig, msg: string, level: 'info' | 'warn' | 'error' = 'info'): void {
   const line = JSON.stringify({ t: new Date().toISOString(), level, svc: 'caas', node: cfg.nodeId, env: cfg.env, zone: cfg.zone, msg });
   if (level === 'info') console.log(line);
   else console.error(line);
@@ -122,6 +123,7 @@ export function startRuntime(): Runtime {
   if (origin && process.env.NODE_ENV !== 'production') log(config, `admin console: ${origin}/caas-admin`);
   if (!rt.replicator.enabled) log(config, 'CAAS_SYNC_SECRET is not set: replication between pods is DISABLED', 'warn');
   if (config.adminTokens.size === 0) log(config, 'CAAS_ADMIN_TOKENS is not set: the admin API is DISABLED', 'warn');
+  else log(config, `admin API: tokens from ${config.adminTokensSource}: ${describeAdminTokens(config)}`);
   startHealthReporting(rt);
 
   // Not awaited: the server must be listening so that peers can sync with this pod meanwhile.

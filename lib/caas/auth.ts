@@ -8,6 +8,31 @@ import type { CaasConfig } from './config';
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest();
 
+/**
+ * Short, non-reversible identifier of a token for logs: the first 8 hex
+ * characters of its SHA-256. Lets an operator see whether the token they paste
+ * is the one the server loaded, without the token ever being written anywhere.
+ * Reproduce it in a shell with:  read -rs T && printf %s "$T" | shasum -a 256 | cut -c1-8
+ */
+export function tokenFingerprint(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 8);
+}
+
+/** "me (48 chars, fingerprint 1a2b3c4d)" for every configured token. */
+export function describeAdminTokens(cfg: CaasConfig): string {
+  return [...cfg.adminTokens].map(([token, name]) => `${name} (${token.length} chars, fingerprint ${tokenFingerprint(token)})`).join(', ');
+}
+
+/** The token the caller sent and which header it came in, for diagnostics. */
+export function presentedAdminToken(req: Request): { token?: string; header?: string } {
+  const custom = req.headers.get('x-caas-admin-token');
+  if (custom) return { token: custom, header: 'x-caas-admin-token' };
+  const auth = req.headers.get('authorization');
+  if (!auth) return {};
+  const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1];
+  return bearer ? { token: bearer, header: 'authorization' } : { header: 'authorization (not "Bearer <token>")' };
+}
+
 /** Returns the actor name for a valid admin token, otherwise undefined. */
 export function authenticateAdmin(cfg: CaasConfig, req: Request): string | undefined {
   // x-caas-admin-token exists because some gateways consume the Authorization header themselves.

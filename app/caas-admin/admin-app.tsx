@@ -46,7 +46,8 @@ function rejectedMessage(host: string): string {
   return (
     `The server at ${host || 'this address'} rejected the admin token. ` +
     'If several servers are running, check this is the right one: each has its own CAAS_ADMIN_TOKENS. ' +
-    'Paste only the token, without the "name:" in front of it.'
+    'Paste only the token, without the "name:" in front of it. ' +
+    'The server log line "admin token rejected" shows the fingerprint of what was sent and of the tokens it accepts.'
   );
 }
 

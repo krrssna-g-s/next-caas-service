@@ -1,8 +1,8 @@
 /** Small helpers shared by the route handlers. Only Web-standard Request/Response are used. */
-import { authenticateAdmin } from './auth';
+import { authenticateAdmin, describeAdminTokens, presentedAdminToken, tokenFingerprint } from './auth';
 import { stringifyForHtml } from './json-tools';
 import { telemetry } from './telemetry';
-import type { Runtime } from './runtime';
+import { log, type Runtime } from './runtime';
 
 /**
  * Sent with every API response. A JSON response opened directly in a browser
@@ -36,11 +36,35 @@ export function requireAdmin(rt: Runtime, req: Request): string | Response {
   const actor = authenticateAdmin(rt.config, req);
   if (!actor) {
     telemetry.count('Admin/AuthFailed');
+    logRejection(rt, req);
     return problem(401, 'missing or invalid admin token', {});
   }
   // The actor name, never the token.
   telemetry.annotate({ 'caas.actor': actor });
   return actor;
+}
+
+let lastRejectionLog = 0;
+
+/**
+ * Says in the server log why a token was refused, with fingerprints instead
+ * of tokens, at most once every 5 s so a flood of bad requests cannot flood the log.
+ */
+function logRejection(rt: Runtime, req: Request): void {
+  const now = Date.now();
+  if (now - lastRejectionLog < 5_000) return;
+  lastRejectionLog = now;
+  const { token, header } = presentedAdminToken(req);
+  const presented = token
+    ? `presented ${token.length} chars, fingerprint ${tokenFingerprint(token)} (header ${header})`
+    : header
+      ? `header ${header}`
+      : 'no token presented';
+  log(
+    rt.config,
+    `admin token rejected: ${presented}; this server accepts ${describeAdminTokens(rt.config)} from ${rt.config.adminTokensSource}`,
+    'warn',
+  );
 }
 
 /** Reads the body as text, refusing anything over the limit. */
