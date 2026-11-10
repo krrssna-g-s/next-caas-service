@@ -209,10 +209,24 @@ XSS and injection defences:
 | Layer | Measure |
 | --- | --- |
 | Input | Strict parser (`lib/caas/json-tools.ts`) with depth limit; duplicate keys refused by default (409 lists them). |
-| Input | `lib/caas/sanitize.ts` on every admin write, import and rollback: `__proto__` / `constructor` / `prototype` keys and keys with control chars or `<>` are refused (422); strings with markup go through an allowlist HTML sanitizer (no script, event handlers, style, iframes, svg; links only http/https/mailto/tel); `javascript:`, `vbscript:`, `file:` and non-image `data:` URLs are blanked. `CAAS_HTML_POLICY=reject` refuses instead of cleaning. The response lists every value that was changed. |
+| Input | `lib/caas/sanitize.ts` on every admin write, import and rollback: `__proto__` / `constructor` / `prototype` keys and keys with control chars or `<>` are refused (422). Strings with markup go through an allowlist that covers normal CMS HTML: formatting, links, images (`srcset`), tables (`colspan`…), `video`/`audio`, `u`/`font`/`center`/`button`, `class`/`id`/`data-*`/`aria-*`/`role`, inline `style` limited to safe CSS properties with checked values, and iframes from approved hosts (YouTube, Vimeo by default). Scripts, `on*` handlers, `<style>`, forms, objects, svg, `position`, `url()` in CSS and `javascript:` URLs never pass. Only real removals are reported, as e.g. `removed onerror="alert(1)" on <img>`; formatting differences (`<br>` → `<br />`, comments) are normalised silently. What is stored is always the sanitizer's output. The console shows a before/after review before saving or importing anything that would lose markup. |
 | Output | JSON responses escape `<`, `>`, `&`, U+2028/2029 as `\uXXXX` (same value, inert if inlined in HTML), and send `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'`, `X-Frame-Options: DENY`. |
 | Console | Per-request nonce CSP with `strict-dynamic` from `proxy.ts` (no inline or third-party script, no framing, `connect-src 'self'`); all content rendered as React text, never HTML (`react/no-danger` and `innerHTML` are lint errors); token sent as a header with `credentials: 'omit'`, so there is no cookie to ride in a CSRF. |
 | Everywhere | `next.config.mjs` adds HSTS, `Referrer-Policy: no-referrer`, COOP and a restrictive `Permissions-Policy`. |
+
+### Allowing more HTML per environment
+
+Set in the environment or `global.properties` (the startup refuses anything that can run script):
+
+| Setting | Example | Effect |
+| --- | --- | --- |
+| `CAAS_HTML_EXTRA_TAGS` / `caas.html.extra.tags` | `marquee,dialog` | more tags |
+| `CAAS_HTML_EXTRA_ATTRIBUTES` / `caas.html.extra.attributes` | `a:ping,*:itemref,td:nowrap` | more `tag:attribute` pairs (`*` = every tag) |
+| `CAAS_HTML_IFRAME_HOSTS` / `caas.html.iframe.hosts` | `www.youtube.com,player.vimeo.com,fast.wistia.net` | iframe hosts (replaces the default list; `none` = no iframes) |
+| `CAAS_HTML_POLICY` / `caas.html.policy` | `reject` | refuse writes that would lose markup instead of cleaning them |
+
+`POST /api/caas-admin/validate` (a document) and `POST /api/caas-admin/transfer?dryRun=1`
+(a bulk file) report what would be removed without writing anything.
 
 ## How replication works
 

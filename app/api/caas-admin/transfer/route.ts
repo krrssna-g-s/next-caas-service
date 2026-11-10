@@ -5,6 +5,7 @@
  *   POST /api/caas-admin/transfer  (same shape) -> imports every entry, then replicates and purges once
  *        ?duplicates=error|first|last   repeated keys anywhere in the file (default: refuse)
  *        ?mode=upsert|create            "create" refuses entries that already exist
+ *        ?dryRun=1                      check everything and report, write nothing
  *
  * The same entry listed twice in one file is refused: which one is meant is
  * the caller's decision, not the importer's.
@@ -65,11 +66,14 @@ export async function POST(req: Request): Promise<Response> {
       const existing = rt.store.get(key);
       if (existing && !existing.deleted) return rejected.push({ index, reason: 'already exists' });
     }
-    const cleaned = cleanContent(item.content, rt.config.htmlPolicy, rt.config.maxBodyBytes);
+    const cleaned = cleanContent(item.content, rt.config.html, rt.config.maxBodyBytes);
     if (!cleaned.ok) return rejected.push({ index, reason: cleaned.error, details: cleaned.details });
     for (const s of cleaned.sanitized) sanitized.push({ index, ...s });
     valid.push({ key, body: cleaned.body });
   });
+  if (new URL(req.url).searchParams.get('dryRun') === '1') {
+    return json({ dryRun: true, ok: rejected.length === 0, wouldImport: valid.length, rejected, sanitized });
+  }
   if (rejected.length > 0) return problem(400, 'import rejected; nothing was written', { rejected });
 
   if (sanitized.length > 0) telemetry.count('Writes/SanitizedValues', sanitized.length);

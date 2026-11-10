@@ -15,7 +15,26 @@ export interface PublishReport {
   replication?: Array<{ url: string; scope: string; ok: boolean; error?: string }>;
   pods?: Array<{ url: string; scope: string; ok: boolean; error?: string }>;
   cdn?: { status: 'ok' | 'skipped' | 'error'; detail?: string };
-  sanitized?: Array<{ pointer: string; reason: string; index?: number }>;
+  sanitized?: SanitizedValue[];
+}
+
+export interface SanitizedValue {
+  pointer: string;
+  reason: string;
+  index?: number;
+  before?: string;
+  after?: string;
+}
+
+export type Validation =
+  | { ok: true; sanitized: SanitizedValue[] }
+  | { ok: false; status: number; error: string; problems?: Array<{ pointer: string; reason: string }>; duplicates?: Array<{ pointer: string; values: Json[] }> };
+
+export interface BulkDryRun {
+  ok: boolean;
+  wouldImport: number;
+  rejected: Array<{ index: number; reason: string }>;
+  sanitized: SanitizedValue[];
 }
 
 export interface Status {
@@ -52,6 +71,8 @@ export interface Api {
   remove(service: string, path: string, ifMatch?: string | null): Promise<PublishReport>;
   rollback(service: string, path: string, hlc: string): Promise<PublishReport>;
   purge(scope: { service?: string; path?: string }): Promise<PublishReport>;
+  validate(content: Json): Promise<Validation>;
+  dryRunBulk(entries: Array<{ service: string; path: string; content: Json }>, mode: 'upsert' | 'create'): Promise<BulkDryRun>;
   importBulk(
     entries: Array<{ service: string; path: string; content: Json }>,
     mode: 'upsert' | 'create',
@@ -107,6 +128,9 @@ export function createApi(token: string): Api {
       (await call<PublishReport>('DELETE', entryUrl(service, path), undefined, ifMatch ? { 'if-match': ifMatch } : {})).data,
     rollback: async (service, path, hlc) => (await call<PublishReport>('POST', entryUrl(service, path), { rollbackTo: hlc })).data,
     purge: async (scope) => (await call<PublishReport>('POST', '/api/caas-admin/purge', scope)).data,
+    validate: async (content) => (await call<Validation>('POST', '/api/caas-admin/validate', content)).data,
+    dryRunBulk: async (entries, mode) =>
+      (await call<BulkDryRun>('POST', `/api/caas-admin/transfer?mode=${mode}&dryRun=1`, { entries })).data,
     importBulk: async (entries, mode) =>
       (await call<PublishReport & { imported: number }>('POST', `/api/caas-admin/transfer?mode=${mode}`, { entries })).data,
   };

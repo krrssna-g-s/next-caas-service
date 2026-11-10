@@ -19,6 +19,10 @@ caas.seed.version=1
 caas.history.limit=20
 caas.max.body.bytes=1048576
 caas.html.policy=sanitize
+# More HTML for this environment's content (anything that can run script is refused at startup):
+# caas.html.extra.tags=marquee
+# caas.html.extra.attributes=a:ping,*:itemref
+# caas.html.iframe.hosts=www.youtube.com,player.vimeo.com
 
 # ---------- caching / CDN ----------
 caas.browser.max.age=60

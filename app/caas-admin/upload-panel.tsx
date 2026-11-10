@@ -21,7 +21,8 @@ import {
   type Json,
 } from '@/lib/caas/json-tools';
 import { normalizeKey } from '@/lib/caas/keys';
-import type { EntryMeta } from './api';
+import type { BulkDryRun, EntryMeta } from './api';
+import { SanitizeReview } from './sanitize-review';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -38,6 +39,8 @@ interface Props {
   known: EntryMeta[];
   onApply: (target: UploadTarget, doc: Json, note: string) => void;
   onBulkImport: (items: BulkItem[], mode: 'upsert' | 'create') => Promise<void>;
+  /** Server-side check of a bulk import without writing anything. */
+  onBulkCheck: (items: BulkItem[], mode: 'upsert' | 'create') => Promise<BulkDryRun | undefined>;
 }
 
 export function preview(v: Json | undefined, max = 140): string {
@@ -45,7 +48,7 @@ export function preview(v: Json | undefined, max = 140): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-export function UploadPanel({ current, known, onApply, onBulkImport }: Props) {
+export function UploadPanel({ current, known, onApply, onBulkImport, onBulkCheck }: Props) {
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, number>>({});
@@ -141,7 +144,7 @@ export function UploadPanel({ current, known, onApply, onBulkImport }: Props) {
             />
           )}
           {bulk ? (
-            <BulkPreview key={`${file.name}:${file.text.length}`} items={bulk} known={known} onImport={onBulkImport} />
+            <BulkPreview key={`${file.name}:${file.text.length}`} items={bulk} known={known} onImport={onBulkImport} onCheck={onBulkCheck} />
           ) : (
             <SinglePreview key={`${file.name}:${file.text.length}`} fileName={file.name} doc={parsed.value} current={current} known={known} onApply={onApply} />
           )}
@@ -373,7 +376,18 @@ function SinglePreview({
   );
 }
 
-function BulkPreview({ items, known, onImport }: { items: BulkItem[]; known: EntryMeta[]; onImport: Props['onBulkImport'] }) {
+function BulkPreview({
+  items,
+  known,
+  onImport,
+  onCheck,
+}: {
+  items: BulkItem[];
+  known: EntryMeta[];
+  onImport: Props['onBulkImport'];
+  onCheck: Props['onBulkCheck'];
+}) {
+  const [check, setCheck] = useState<BulkDryRun | null>(null);
   const [keep, setKeep] = useState<'first' | 'last'>('last');
   const [existing, setExisting] = useState<'overwrite' | 'skip'>('overwrite');
   const [busy, setBusy] = useState(false);
@@ -467,11 +481,21 @@ function BulkPreview({ items, known, onImport }: { items: BulkItem[]; known: Ent
           className="primary"
           disabled={busy || toSend.length === 0}
           onClick={async () => {
-            if (!confirm(`Publish ${toSend.length} entries to all pods?`)) return;
             setBusy(true);
             try {
+              // Ask the server first: rejected entries and values it would clean are shown before anything is written.
+              const r = await onCheck(
+                toSend.map((x) => x.item),
+                existing === 'skip' ? 'create' : 'upsert',
+              );
+              if (!r) return;
+              if (!r.ok || r.sanitized.length > 0) {
+                setCheck(r);
+                return;
+              }
+              if (!confirm(`Publish ${toSend.length} entries to all pods?`)) return;
               await onImport(
-                toSend.map((r) => r.item),
+                toSend.map((x) => x.item),
                 existing === 'skip' ? 'create' : 'upsert',
               );
             } finally {
@@ -479,9 +503,43 @@ function BulkPreview({ items, known, onImport }: { items: BulkItem[]; known: Ent
             }
           }}
         >
-          {busy ? 'Importing…' : `Import ${toSend.length}`}
+          {busy ? 'Checking…' : `Import ${toSend.length}`}
         </button>
       </div>
+      {check && !check.ok && (
+        <div className="notice error" role="alert">
+          <div className="grow">
+            <p>The server would refuse this import; nothing was written.</p>
+            <ul className="small">
+              {check.rejected.slice(0, 20).map((r) => (
+                <li key={r.index}>
+                  <code>{`entry ${r.index}: ${r.reason}`}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {check && check.ok && check.sanitized.length > 0 && (
+        <SanitizeReview
+          changes={check.sanitized}
+          busy={busy}
+          saveLabel={`Import ${toSend.length} with these changes`}
+          onCancel={() => setCheck(null)}
+          onSave={async () => {
+            setBusy(true);
+            try {
+              setCheck(null);
+              await onImport(
+                toSend.map((x) => x.item),
+                existing === 'skip' ? 'create' : 'upsert',
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
     </section>
   );
 }

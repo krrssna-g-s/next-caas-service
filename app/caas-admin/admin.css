@@ -165,3 +165,6 @@ tr.skipped { opacity: 0.5; }
 .dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); width: min(480px, calc(100vw - 32px)); padding: 18px; }
 .dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .dialog fieldset { border: 0; padding: 0; margin: 0 0 8px; }
+
+.review { margin-bottom: 12px; }
+.review td code, .review th code { white-space: pre-wrap; }

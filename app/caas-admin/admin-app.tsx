@@ -7,8 +7,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type Ref } from 'react';
 import { deepEqual, JsonSyntaxError, parseJsonDetailed, type Json } from '@/lib/caas/json-tools';
 import { normalizeKey } from '@/lib/caas/keys';
-import { ApiError, createApi, describeReport, type Api, type EntryMeta, type PublishReport, type Status } from './api';
+import { ApiError, createApi, describeReport, type Api, type EntryMeta, type PublishReport, type SanitizedValue, type Status } from './api';
 import { JsonTree } from './json-tree';
+import { SanitizeReview } from './sanitize-review';
 import { UploadPanel, type UploadTarget } from './upload-panel';
 
 interface Editing {
@@ -65,6 +66,8 @@ export function AdminApp() {
   const [tab, setTab] = useState<Tab>('fields');
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Values the server would clean on save; shown for review before saving. */
+  const [review, setReview] = useState<{ changes: SanitizedValue[]; doc: Json } | null>(null);
   const newDialog = useRef<HTMLDialogElement>(null);
   const host = useServerHost();
 
@@ -132,9 +135,35 @@ export function AdminApp() {
     });
   };
 
+  /** Checks with the server first; anything it would remove is shown for review instead of saved silently. */
   const save = () => {
     if (!api || !editing) return;
     void run(async () => {
+      const v = await api.validate(editing.doc);
+      if (!v.ok) {
+        const details = [
+          ...(v.problems ?? []).map((p) => `${p.pointer || '(root)'}: ${p.reason}`),
+          ...(v.duplicates ?? []).map((d) => `${d.pointer}: ${d.values.length} values`),
+        ];
+        setNotice({ text: v.error, kind: 'error', details });
+        return;
+      }
+      if (v.sanitized.length > 0) {
+        setReview({ changes: v.sanitized, doc: editing.doc });
+        return;
+      }
+      await commitSave();
+    });
+  };
+
+  const saveReviewed = () => {
+    setReview(null);
+    void run(commitSave);
+  };
+
+  const commitSave = async () => {
+    if (!api || !editing) return;
+    {
       const r = await api.save(editing.service, editing.path, editing.doc, { ifMatch: editing.etag, createOnly: editing.isNew });
       // Re-read so the editor shows exactly what was stored (after sanitizing).
       const fresh = await api.read(editing.service, editing.path);
@@ -146,7 +175,7 @@ export function AdminApp() {
         details: sanitizedDetails(r),
       });
       await refresh(api);
-    });
+    }
   };
 
   const remove = () => {
@@ -186,6 +215,16 @@ export function AdminApp() {
       setNotice({ text: `Imported ${r.imported} entries: ${describeReport(r).text}`, kind: 'ok', details: sanitizedDetails(r) });
       await refresh(api);
     });
+  };
+
+  const bulkCheck = async (items: Array<{ service: string; path: string; content: Json }>, mode: 'upsert' | 'create') => {
+    if (!api) return undefined;
+    try {
+      return await api.dryRunBulk(items, mode);
+    } catch (e) {
+      setNotice(errorNotice(e));
+      return undefined;
+    }
   };
 
   const services = useMemo(() => [...new Set(entries.map((e) => e.service))].sort(), [entries]);
@@ -297,7 +336,7 @@ export function AdminApp() {
           {notice && <NoticeView notice={notice} onClose={() => setNotice(null)} />}
           {!editing ? (
             <EmptyEditor onNew={() => newDialog.current?.showModal()} onUpload={() => setTab('upload')} tab={tab}>
-              {tab === 'upload' && <UploadPanel current={null} known={entries} onApply={applyUpload} onBulkImport={bulkImport} />}
+              {tab === 'upload' && <UploadPanel current={null} known={entries} onApply={applyUpload} onBulkImport={bulkImport} onBulkCheck={bulkCheck} />}
             </EmptyEditor>
           ) : (
             <>
@@ -343,6 +382,16 @@ export function AdminApp() {
                 </div>
               </div>
 
+              {/* Only while the document is the one that was checked; any edit closes the review. */}
+              {review && review.doc === editing.doc && (
+                <SanitizeReview
+                  changes={review.changes}
+                  busy={busy}
+                  onSave={saveReviewed}
+                  onCancel={() => setReview(null)}
+                />
+              )}
+
               <div role="tablist" className="tabs" aria-label="Editor views">
                 {(['fields', 'json', 'upload', 'history'] as const).map((t) => (
                   <button key={t} role="tab" type="button" aria-selected={tab === t} disabled={t === 'history' && editing.isNew} onClick={() => setTab(t)}>
@@ -360,6 +409,7 @@ export function AdminApp() {
                     known={entries}
                     onApply={applyUpload}
                     onBulkImport={bulkImport}
+                    onBulkCheck={bulkCheck}
                   />
                 )}
                 {tab === 'history' && !editing.isNew && (

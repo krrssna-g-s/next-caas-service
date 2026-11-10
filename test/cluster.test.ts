@@ -318,7 +318,8 @@ test('XSS payloads are sanitized before they are stored and served', async () =>
   });
   assert.equal(res.status, 201);
   const report = await res.json();
-  assert.deepEqual(report.sanitized.map((s: { pointer: string }) => s.pointer).sort(), ['/html', '/link', '/note']);
+  // '/note' only loses a stray </script> with no opening tag: normalised, not reported as a removal.
+  assert.deepEqual(report.sanitized.map((s: { pointer: string }) => s.pointer).sort(), ['/html', '/link']);
 
   const served = await read('c', 'offers/xss');
   const text = await served.text();
@@ -336,6 +337,32 @@ test('XSS payloads are sanitized before they are stored and served', async () =>
     body: '{"__proto__":{"isAdmin":true}}',
   });
   assert.equal(proto.status, 422);
+});
+
+test('validate and bulk dry run report what would change without writing', async () => {
+  const v = await (
+    await fetch(`${url(PORTS.a)}/api/caas-admin/validate`, {
+      method: 'POST',
+      headers: { ...admin, 'content-type': 'application/json' },
+      body: JSON.stringify({ body: '<p style="color:red">ok</p><img src=x onerror=alert(1)>', note: 'a<br>b' }),
+    })
+  ).json();
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.sanitized.map((x: { pointer: string }) => x.pointer), ['/body']);
+  assert.match(v.sanitized[0].reason, /onerror/);
+  assert.match(v.sanitized[0].before, /onerror/);
+  assert.doesNotMatch(v.sanitized[0].after, /onerror/);
+
+  const dry = await (
+    await fetch(`${url(PORTS.a)}/api/caas-admin/transfer?dryRun=1`, {
+      method: 'POST',
+      headers: { ...admin, 'content-type': 'application/json' },
+      body: JSON.stringify({ entries: [{ service: 'dry', path: 'a', content: { h: '<script>x</script>y' } }] }),
+    })
+  ).json();
+  assert.equal(dry.wouldImport, 1);
+  assert.equal(dry.sanitized[0].index, 0);
+  assert.equal((await read('a', 'dry/a')).status, 404, 'dry run wrote nothing');
 });
 
 test('a new service route can be created once, and If-None-Match stops overwriting it', async () => {

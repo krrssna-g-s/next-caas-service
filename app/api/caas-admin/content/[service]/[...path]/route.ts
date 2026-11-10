@@ -80,7 +80,7 @@ export async function PUT(req: Request, ctx: Ctx): Promise<Response> {
   if (text instanceof Response) return text;
   const parsed = parseInput(text, duplicates);
   if (!parsed.ok) return problem(parsed.status, parsed.error, parsed.details);
-  const cleaned = cleanContent(parsed.value, rt.config.htmlPolicy, rt.config.maxBodyBytes);
+  const cleaned = cleanContent(parsed.value, rt.config.html, rt.config.maxBodyBytes);
   if (!cleaned.ok) return problem(cleaned.status, cleaned.error, cleaned.details);
 
   const current = rt.store.get(key);
@@ -127,7 +127,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<Response> {
   // A rollback is a new write, so it replicates like any other change. Old
   // versions may predate the safety checks, so they go through them again.
   if (!old.deleted) {
-    const cleaned = cleanContent(JSON.parse(old.body), rt.config.htmlPolicy, rt.config.maxBodyBytes);
+    const cleaned = cleanContent(JSON.parse(old.body), rt.config.html, rt.config.maxBodyBytes);
     if (!cleaned.ok) return problem(cleaned.status, cleaned.error, cleaned.details);
     return respondPublished(rt, rt.store.put(key, cleaned.body, actor), 200, { sanitized: cleaned.sanitized });
   }

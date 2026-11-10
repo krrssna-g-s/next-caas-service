@@ -5,6 +5,7 @@
  */
 import { hostname } from 'node:os';
 import { loadEnvironment } from './properties';
+import { DEFAULT_IFRAME_HOSTS, validateHtmlRules, type HtmlRules } from './sanitize';
 
 export interface AkamaiConfig {
   /** e.g. https://akab-xxxx.luna.akamaiapis.net */
@@ -53,6 +54,8 @@ export interface CaasConfig {
   historyLimit: number;
   /** "sanitize" cleans unsafe HTML out of string values; "reject" refuses the write. */
   htmlPolicy: 'sanitize' | 'reject';
+  /** What HTML is allowed inside string values (see lib/caas/sanitize.ts). */
+  html: HtmlRules;
   memoryCacheEntries: number;
 
   akamai?: AkamaiConfig;
@@ -108,6 +111,32 @@ function parseAkamai(env: Env): AkamaiConfig | undefined {
     network: env.AKAMAI_NETWORK ?? 'production',
     mode: env.AKAMAI_PURGE_MODE ?? 'invalidate',
   };
+}
+
+/**
+ * CAAS_HTML_EXTRA_TAGS=details,marquee
+ * CAAS_HTML_EXTRA_ATTRIBUTES=a:ping,*:itemprop,td:nowrap
+ * CAAS_HTML_IFRAME_HOSTS=www.youtube.com,player.vimeo.com   ("none" for no iframes)
+ */
+function htmlRules(env: Env): HtmlRules {
+  const extraAttributes: Record<string, string[]> = {};
+  for (const item of list(env, 'CAAS_HTML_EXTRA_ATTRIBUTES')) {
+    const i = item.indexOf(':');
+    if (i <= 0 || i === item.length - 1) throw new Error(`CAAS_HTML_EXTRA_ATTRIBUTES: expected tag:attribute, got "${item}"`);
+    const tag = item.slice(0, i).trim().toLowerCase();
+    (extraAttributes[tag] ??= []).push(item.slice(i + 1).trim().toLowerCase());
+  }
+  const hostsRaw = env.CAAS_HTML_IFRAME_HOSTS;
+  const iframeHosts =
+    hostsRaw === undefined ? DEFAULT_IFRAME_HOSTS : hostsRaw.trim().toLowerCase() === 'none' ? [] : list(env, 'CAAS_HTML_IFRAME_HOSTS').map((h) => h.toLowerCase());
+  const rules: HtmlRules = {
+    policy: htmlPolicy(env),
+    extraTags: list(env, 'CAAS_HTML_EXTRA_TAGS').map((t) => t.toLowerCase()),
+    extraAttributes,
+    iframeHosts,
+  };
+  validateHtmlRules(rules); // refuses script-capable tags/attributes at startup
+  return rules;
 }
 
 function htmlPolicy(env: Env): 'sanitize' | 'reject' {
@@ -176,6 +205,7 @@ function buildConfig(env: Env): CaasConfig {
     maxBodyBytes: int(env, 'CAAS_MAX_BODY_BYTES', 1_048_576),
     historyLimit: Math.max(1, int(env, 'CAAS_HISTORY_LIMIT', 20)),
     htmlPolicy: htmlPolicy(env),
+    html: htmlRules(env),
     memoryCacheEntries: Math.max(1, int(env, 'CAAS_MEMORY_CACHE_ENTRIES', 5_000)),
 
     akamai: parseAkamai(env),

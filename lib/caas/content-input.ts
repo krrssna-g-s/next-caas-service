@@ -3,7 +3,7 @@
  * strict parsing with duplicate-key detection, then the XSS sanitizer.
  */
 import { JsonSyntaxError, parseJsonDetailed, type DuplicateChoice, type DuplicateKey, type Json } from './json-tools';
-import { sanitizeContent, type HtmlPolicy, type SanitizeIssue } from './sanitize';
+import { sanitizeContent, type HtmlRules, type SanitizeIssue } from './sanitize';
 
 /**
  * ?duplicates=  error (default) | first | last
@@ -47,8 +47,8 @@ export type Cleaned =
   | { ok: true; body: string; sanitized: SanitizeIssue[] }
   | { ok: false; status: number; error: string; details: Record<string, unknown> };
 
-export function cleanContent(value: Json, policy: HtmlPolicy, maxBytes: number): Cleaned {
-  const r = sanitizeContent(value, policy);
+export function cleanContent(value: Json, rules: HtmlRules, maxBytes: number): Cleaned {
+  const r = sanitizeContent(value, rules);
   if (r.errors.length > 0) {
     return { ok: false, status: 422, error: 'content was refused by the safety checks', details: { problems: r.errors } };
   }
