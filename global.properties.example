@@ -1,0 +1,60 @@
+# Example global.properties. Not part of the image: in EKS it is served by the
+# properties service and read from PROPS_PATH; locally it is ./global.properties.
+#
+# Read with properties-reader: key=value, # comments, [section] headers.
+# A [section] prefixes the keys under it, so [prod.west] scopes them to
+# CAAS_ENV=prod and CAAS_ZONE=west.
+# Precedence: environment variable > [env.zone] > [env] > top of the file.
+# Keys may be env-var names (CAAS_CDN_MAX_AGE) or dotted (caas.cdn.max-age).
+# ${NAME} is replaced with another value from the environment or this file.
+
+# ---------- every environment ----------
+caas.seed.version=1
+caas.history.limit=20
+caas.max.body.bytes=1048576
+caas.html.policy=sanitize
+caas.sync.interval.ms=15000
+caas.push.timeout.ms=3000
+caas.browser.max.age=60
+caas.cdn.max.age=86400
+caas.not.found.cdn.max.age=30
+akamai.network=production
+akamai.purge.mode=invalidate
+new.relic.enabled=true
+
+# Secrets are better kept in a Kubernetes Secret (environment variables win over this file).
+# If they must be referenced here, point at an environment variable:
+# new.relic.license.key=${NR_LICENSE_KEY}
+
+# ---------- local development ----------
+[local]
+caas.cdn.max.age=0
+caas.browser.max.age=0
+new.relic.enabled=false
+
+# ---------- per environment ----------
+[sit]
+caas.cdn.max.age=300
+akamai.network=staging
+new.relic.app.name=caas-service-sit
+
+[stage]
+caas.cdn.max.age=3600
+akamai.network=staging
+new.relic.app.name=caas-service-stage
+
+[canary]
+caas.replication.group=prod
+new.relic.app.name=caas-service-canary
+
+[prod]
+new.relic.app.name=caas-service-prod
+
+# ---------- per environment and zone ----------
+[prod.east]
+caas.peer.dns=caas-headless.caas-prod.svc.cluster.local,caas-headless.caas-canary.svc.cluster.local
+caas.remote.peers=https://caas-sync.prod.west.internal.example.com
+
+[prod.west]
+caas.peer.dns=caas-headless.caas-prod.svc.cluster.local,caas-headless.caas-canary.svc.cluster.local
+caas.remote.peers=https://caas-sync.prod.east.internal.example.com

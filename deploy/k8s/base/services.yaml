@@ -1,0 +1,29 @@
+# Traffic from Apigee goes to this service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: caas
+spec:
+  selector:
+    app: caas
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Used only by the pods to find each other for replication.
+apiVersion: v1
+kind: Service
+metadata:
+  name: caas-headless
+spec:
+  clusterIP: None
+  # Pods must be able to find peers that are still starting, otherwise a
+  # cold start of the whole cluster could not bootstrap.
+  publishNotReadyAddresses: true
+  selector:
+    app: caas
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

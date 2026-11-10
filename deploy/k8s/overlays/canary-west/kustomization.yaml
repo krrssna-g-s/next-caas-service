@@ -1,0 +1,23 @@
+# canary / west  ->  kubectl apply -k deploy/k8s/overlays/canary-west   (against the west EKS cluster)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: caas-canary
+resources:
+  - ../../base
+images:
+  - name: caas-service
+    newName: 123456789012.dkr.ecr.us-west-2.amazonaws.com/caas-service   # replace with your registry
+    newTag: "1.0.0"
+configMapGenerator:
+  - name: caas-config
+    behavior: merge
+    literals:
+      - CAAS_ENV=canary
+      - CAAS_ZONE=west
+      # global.properties from the properties service. Uncomment with the real URL; pods exit at startup if it cannot be fetched.
+      # - PROPS_PATH=http://props-service.props.svc.cluster.local/caas/canary/global.properties
+      - CAAS_REPLICATION_GROUP=prod
+      # Pods of this cluster that hold the same content.
+      - CAAS_PEER_DNS=caas-headless.caas-prod.svc.cluster.local,caas-headless.caas-canary.svc.cluster.local
+      # Internal-only endpoint of the same service in the east zone (placeholder: replace).
+      - CAAS_REMOTE_PEERS=https://caas-sync.prod.east.internal.example.com

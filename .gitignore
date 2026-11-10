@@ -1,0 +1,8 @@
+node_modules
+.next
+.caas-data
+next-env.d.ts
+*.tsbuildinfo
+.env
+.env.local
+global.properties

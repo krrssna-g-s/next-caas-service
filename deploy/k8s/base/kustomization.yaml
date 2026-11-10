@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - statefulset.yaml
+  - services.yaml
+  - scaling.yaml
+
+# Values shared by every environment and zone. Each overlay merges in its own
+# CAAS_ENV, CAAS_ZONE, CAAS_PEER_DNS and CAAS_REMOTE_PEERS.
+#
+# The Secret "caas-secrets" is NOT in this repo. Create it per namespace from
+# your secret manager with: CAAS_ADMIN_TOKENS, CAAS_SYNC_SECRET,
+# AKAMAI_HOST, AKAMAI_CLIENT_TOKEN, AKAMAI_CLIENT_SECRET, AKAMAI_ACCESS_TOKEN.
+# Optional in the Secret: NEW_RELIC_LICENSE_KEY (monitoring is off without it)
+# and PROPS_AUTH (Authorization header for the properties service).
+#
+# global.properties is served by the properties service in EKS. Point
+# PROPS_PATH at it per overlay (see prod-east). Values set here as literals win
+# over the properties file, so drop literals that you manage in the file.
+configMapGenerator:
+  - name: caas-config
+    literals:
+      - PORT=3000
+      - CAAS_PEER_PORT=3000
+      - CAAS_DATA_DIR=/data
+      - CAAS_SEED_DIR=/app/content-seed
+      - CAAS_SEED_VERSION=1
+      - CAAS_SYNC_INTERVAL_MS=15000
+      - CAAS_BROWSER_MAX_AGE=60
+      - CAAS_CDN_MAX_AGE=86400
+      - AKAMAI_NETWORK=production
+      - NEW_RELIC_ENABLED=true

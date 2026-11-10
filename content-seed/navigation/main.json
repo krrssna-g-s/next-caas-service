@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "label": "Home", "href": "/" },
+    { "label": "Products", "href": "/products" },
+    { "label": "Support", "href": "/support" }
+  ]
+}

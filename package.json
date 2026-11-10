@@ -1,0 +1,37 @@
+{
+  "name": "caas-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Content-as-a-Service on Next.js API routes with an embedded, self-replicating SQLite store",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "newrelic": "^14.12.0",
+    "next": "^16.4.6",
+    "properties-reader": "^3.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sanitize-html": "^2.18.1"
+  },
+  "devDependencies": {
+    "@types/newrelic": "^9.14.8",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sanitize-html": "^2.16.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.14.0",
+    "eslint-config-next": "^16.4.6",
+    "tsx": "^4.23.15",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

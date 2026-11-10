@@ -1,0 +1,85 @@
+# A StatefulSet rather than a Deployment so that every pod keeps its own small
+# volume for the embedded database across restarts. The database still runs
+# inside the Node.js process of the pod; there is no database service.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: caas
+spec:
+  serviceName: caas-headless
+  replicas: 3
+  # Start and stop pods in parallel; they sync with each other on their own.
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: caas
+  template:
+    metadata:
+      labels:
+        app: caas
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: caas
+      containers:
+        - name: caas
+          image: caas-service:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: caas-config
+            - secretRef:
+                name: caas-secrets
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          startupProbe:
+            httpGet: { path: /api/health/live, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /api/health/live, port: http }
+            periodSeconds: 10
+          # Ready only after the pod has synced its database with its peers.
+          readinessProbe:
+            httpGet: { path: /api/health/ready, port: http }
+            periodSeconds: 3
+            failureThreshold: 2
+          resources:
+            requests: { cpu: 250m, memory: 384Mi }
+            limits: { memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp3
+        resources:
+          requests:
+            storage: 1Gi

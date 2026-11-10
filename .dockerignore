@@ -1,0 +1,9 @@
+node_modules
+.next
+.caas-data
+.git
+deploy
+test
+*.md
+.env*
+global.properties

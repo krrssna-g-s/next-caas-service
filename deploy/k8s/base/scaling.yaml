@@ -1,0 +1,29 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: caas
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: caas
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# Keeps at least two pods (and therefore two copies of the content) up during node drains.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: caas
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: caas

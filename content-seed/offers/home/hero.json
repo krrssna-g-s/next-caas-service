@@ -1,0 +1,5 @@
+{
+  "title": "Welcome",
+  "subtitle": "This entry comes from the content-seed folder in the image.",
+  "cta": { "label": "Get started", "href": "/start" }
+}
